@@ -58,9 +58,11 @@ The patch preserves the `nil` / `[]` / populated distinction end-to-end (importa
 
 ## Why merging matters
 
-- Any `XcodeProj`-based generator that touches a project using SPM traits currently **breaks it on save**. The user cannot opt back in from Xcode without re-selecting every trait.
-- Every downstream (Tuist, XcodeGen, etc.) needs this fixed upstream. No reasonable workaround exists at their layer — `traits` isn't in the public XcodeProj model at all.
-- The patch is small: two optional `[String]?` fields with `decodeIfPresent` / `if let` encode, plus the pbxproj fixture. No behavior change for projects that don't use traits.
+- **Silent trait reversion on save**: A generator built on stock XcodeProj that loads a trait-configured project and writes it back discards the user's trait selection. Next time Xcode opens the file, no `traits` key is present, so Xcode falls back to default traits — potentially re-enabling features the user opted out of or linking frameworks they explicitly avoided (e.g. a `NoUIFramework` selection that kept UIKit/AppKit out would quietly come back on).
+
+- **XcodeGen is blocked on this**: [XcodeGen #1585](https://github.com/yonaskolb/XcodeGen/issues/1585) asks for traits in the spec, but it can't be wired up until `traits` exists in the upstream XcodeProj model. The Sentry team currently works around this by hand-committing a `.xcodeproj` with traits ([sentry-cocoa #7578](https://github.com/getsentry/sentry-cocoa/pull/7578)) for their macOS CLI sample.
+
+- **The patch is small**: two optional `[String]?` fields with `decodeIfPresent` / `if let` encode, plus a round-trip fixture and tests. No behavior change for projects that don't use traits. SemVer-minor additive change.
 
 ## Reproducing
 
