@@ -1,56 +1,70 @@
-# XcodeProj-MinimalProject
+# Why tuist/XcodeProj should support Swift Package Traits
 
-Demonstrates the difference between stock `tuist/XcodeProj` 9.11.0 and the `support-package-traits` branch when round-tripping a `.xcodeproj` that contains Swift Package traits (SE-0450).
+**TL;DR**: Open a `.xcodeproj` from Xcode 26.4+ that uses SPM traits (SE-0450), round-trip it through stock XcodeProj 9.11.0, and the trait selections vanish. This repo demonstrates the regression and proves a minimal patch fixes it.
 
-## Layout
+## The problem
+
+Xcode 26.4+ writes Swift Package trait selections into `project.pbxproj`:
 
 ```
-XcodeProj-MinimalProject/
-├── Fixtures/
-│   └── ProjectWithSwiftPackageTraits.xcodeproj   # contains Remote traits = (); and Local traits = ( NoUIFramework, );
-├── Stock/              # Swift package depending on tuist/XcodeProj exact 9.11.0
-├── Branch/             # Swift package depending on ../../XcodeProj (local path, branch: support-package-traits)
-└── compare.sh          # Runs both and shows the difference
+XCLocalSwiftPackageReference "MyLocalPackage" = {
+    ...
+    relativePath = MyLocalPackage;
+    traits = (
+        NoUIFramework,
+    );
+};
 ```
 
-## Prerequisites
+Stock `tuist/XcodeProj 9.11.0` has no `traits` field on `XCRemoteSwiftPackageReference` / `XCLocalSwiftPackageReference`, so the value is **silently dropped** the first time any tool calls `XcodeProj.write()`. Downstream tools (Tuist, XcodeGen, rules_xcodeproj, etc.) inherit this regression.
 
-- The `support-package-traits` branch must be pushed to the remote referenced in `Branch/Package.swift` (currently `https://github.com/chigichan24/XcodeProj.git`). `swift run Branch` fetches from the remote; no local sibling checkout is needed.
-
-## Run
+## The proof
 
 ```
 ./compare.sh
 ```
 
-Or each side independently:
+### Stock XcodeProj 9.11.0
 
 ```
-(cd Stock && swift run Stock)
-(cd Branch && swift run Branch)
+fixture has 5 trait-related lines:
+  traits = (
+  NoUIFramework,
+  );
+  traits = (
+  );
+
+after load -> write: 0 trait-related lines:
+
+Result: traits preserved in output pbxproj = NO
 ```
 
-## What each side proves
+### The branch ([`chigichan24/XcodeProj@support-package-traits`](https://github.com/chigichan24/XcodeProj/tree/support-package-traits))
 
-### Stock (tuist/XcodeProj 9.11.0)
+Same fixture, same `XcodeProj.write()` call:
 
-Load the fixture and write it back. Greps the output `pbxproj` for `traits = (` lines and reports survival.
+```
+Phase 1: decode traits from fixture
+  Remote  RxSwift traits = []
+  Local   MyLocalPackage traits = ["NoUIFramework"]
 
-Expected: **dropped**. The stock release has no `traits` field on `XCRemoteSwiftPackageReference` / `XCLocalSwiftPackageReference`, so the value is silently discarded on write. `Stock` exits 0 when it confirms the regression (the bug the branch fixes), 1 otherwise.
+Phase 3: round-trip — mutate -> write -> reload -> verify
+  MyLocalPackage traits = ["SQLCipher", "FTS5", "JSON1"] [OK]
 
-### Branch (support-package-traits)
+ALL CHECKS PASSED
+```
 
-Runs four phases against the same fixture:
+The patch preserves the `nil` / `[]` / populated distinction end-to-end (important because SE-0450 treats `traits: []` as "disable default traits", not the same as absent).
 
-| Phase | What |
-|---|---|
-| 1 | Decodes the fixture and prints `traits` on each package reference (shows values survive decode) |
-| 2 | Writes the fixture back after setting Remote traits to `nil` / `[]` / `["SQLCipher"]`; greps the resulting `pbxproj` to show how each state serializes (key omitted vs. `( );` vs. `( SQLCipher, );`) |
-| 3 | Mutates Local `traits`, writes, reloads, and asserts the values persist |
-| 4 | Asserts the type-level invariant that `nil`, `[]`, and `["Foo"]` are all pairwise unequal on `XCRemoteSwiftPackageReference` |
+## Why merging matters
 
-Expected: all checks pass. `Branch` exits 0 on success, 1 otherwise.
+- Any `XcodeProj`-based generator that touches a project using SPM traits currently **breaks it on save**. The user cannot opt back in from Xcode without re-selecting every trait.
+- Every downstream (Tuist, XcodeGen, etc.) needs this fixed upstream. No reasonable workaround exists at their layer — `traits` isn't in the public XcodeProj model at all.
+- The patch is small: two optional `[String]?` fields with `decodeIfPresent` / `if let` encode, plus the pbxproj fixture. No behavior change for projects that don't use traits.
 
-## Fixture
+## Reproducing
 
-`Fixtures/ProjectWithSwiftPackageTraits.xcodeproj` is copied from the fixture added in the XcodeProj branch (`Fixtures/iOS/ProjectWithSwiftPackageTraits.xcodeproj`). Kept here so this repo runs standalone after cloning.
+1. Clone this repo.
+2. `./compare.sh`
+
+`Stock/` pulls `tuist/XcodeProj` exactly `9.11.0`. `Branch/` pulls the patch branch. Both exercise the same fixture at `Fixtures/ProjectWithSwiftPackageTraits.xcodeproj`.
