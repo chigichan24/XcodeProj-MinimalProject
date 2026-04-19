@@ -4,7 +4,7 @@ import XcodeProj
 
 @MainActor
 enum Verifier {
-    static let repoRoot = Path(#filePath).parent().parent().parent()
+    static let repoRoot = Path(#filePath).parent().parent().parent().parent()
     static let fixturePath = repoRoot + "Fixtures" + "ProjectWithSwiftPackageTraits.xcodeproj"
 
     static func header(_ s: String) {
