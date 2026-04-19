@@ -6,7 +6,7 @@ let package = Package(
     name: "Branch",
     platforms: [.macOS(.v11)],
     dependencies: [
-        .package(path: "../../XcodeProj"),
+        .package(url: "https://github.com/chigichan24/XcodeProj.git", branch: "support-package-traits"),
         .package(url: "https://github.com/kylef/PathKit.git", .upToNextMinor(from: "1.0.1")),
     ],
     targets: [

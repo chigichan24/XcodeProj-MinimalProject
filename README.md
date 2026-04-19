@@ -15,13 +15,7 @@ XcodeProj-MinimalProject/
 
 ## Prerequisites
 
-Sibling checkout of XcodeProj on branch `support-package-traits`:
-
-```
-~/src/github.com/chigichan24/
-  XcodeProj/                   (branch: support-package-traits)
-  XcodeProj-MinimalProject/    (this repo)
-```
+- The `support-package-traits` branch must be pushed to the remote referenced in `Branch/Package.swift` (currently `https://github.com/chigichan24/XcodeProj.git`). `swift run Branch` fetches from the remote; no local sibling checkout is needed.
 
 ## Run
 
